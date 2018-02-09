@@ -72,9 +72,9 @@ def Stocks(X_data, W1_data, w2_num, getL_n, w3_init):
         # "method": "Powell"
     }
     res = basinhopping(
-                fit.log_likelihood, w3_init,
+                log_likelihood, w3_init,
                 minimizer_kwargs = minimizer_kwargs,
-                niter = 50,
+                niter = 100,
                 stepsize = .1,
                 T = 1e-3,
                 # disp = True,

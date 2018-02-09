@@ -5,7 +5,7 @@ import numpy as np
 # from sympy.tensor.array import derive_by_array as Derive
 # from sympy.matrices.dense import hessian as Hessian
 
-def getWeightMatrix(W_expert, W_fixed, shuffle):
+def getWeightMatrix(W_expert, W_fixed, w1_sym, x_sym, shuffle):
     W = W_expert
     if shuffle:
         # Creating a valid shuffled graph
@@ -27,7 +27,6 @@ def getWeightMatrix(W_expert, W_fixed, shuffle):
             G = nx.Graph(np.array(A).reshape((9,9)))
 
     # Determining weight types
-    w1_sym = [w_0_2, w_0_7, w_2_2, w_2_6, w_8_2, w_4_2]
     w3_sym = [w for w in W[:,2:4].flatten() if type(w) != int]
 
     W += W_fixed
@@ -68,6 +67,7 @@ def getWeightMatrix(W_expert, W_fixed, shuffle):
     # Making numerically efficient functions
     print("Lambdifying equation... [4/7]")
     getL_n = sp.lambdify(symbs, -sp.log(p1), "numpy")
-    getNewX = sp.lambdify(symbs, x_t3, "numpy")
+    # getNewX = sp.lambdify(symbs, x_t3, "numpy")
+    getW_num = sp.lambdify(symbs, W)
 
-    return sp.Matrix(W), w1_sym, w2_sym, w3_sym, getL_n, getNewX
+    return W, w1_sym, w2_sym, w3_sym, getL_n, getW_num

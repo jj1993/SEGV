@@ -5,12 +5,12 @@ from scipy.odr import *
 VARIABLE_ENERGY_EXPENDITURE = 10
 THERMOGENESYS = 1/7700 # kilos weight gain per calorie
 
-df1 = pd.read_csv('data.csv', decimal=',', delimiter=';').set_index('Heliusnr')
+df1 = pd.read_csv('data/data.csv', decimal=',', delimiter=';').set_index('Heliusnr')
 df2 = pd.read_csv(
-        'energy_intake.csv', decimal=',', delimiter=';'
+        'data/energy_intake.csv', decimal=',', delimiter=';'
         ).set_index('Heliusnr')
 df3 = pd.read_csv(
-        'squash_data.csv', decimal=',', delimiter=';'
+        'data/squash_data.csv', decimal=',', delimiter=';'
         ).set_index('Heliusnr')
 df = df1.join(df2)
 
@@ -203,9 +203,9 @@ def selectOnEthnicity(eth):
     ethnicDict = {'NL':1, 'HIND':2, 'MAROK':8}
     num = ethnicDict[eth]
 
-    select = [0 if e == num else 1 for e in database.ethnicities]
-    return (r(database.variables_data.T, select),
-            r(database.weights_data.T, select))
+    select = [0 if e == num else 1 for e in ethnicities]
+    return (r(variables_data.T, select),
+            r(weights_data.T, select))
 
 def selectRandom(amount):
     """
@@ -220,5 +220,5 @@ def selectRandom(amount):
     select[amount:] = 1
     np.random.shuffle(select)
 
-    return (r(database.variables_data.T, select),
-            r(database.weights_data.T, select))
+    return (r(variables_data.T, select),
+            r(weights_data.T, select))

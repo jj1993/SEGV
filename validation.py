@@ -1,14 +1,41 @@
-def getSensitivity(W_sym, X_data, W1_data, w2_num, w3_num):
-    sensitivity = []
-    X_check = np.array([getNewX(*x.T, *w1.T, *w2_num, *w3_num).flatten()[1:] for x, w1 in zip(X_data, W1_data)])
-    change = 1.5
+import numpy as np
+
+timesteps = 10
+change = 1.1
+weight, sleep, income, exercise, discrimination = 3, 4, 6, 7, 8
+
+def getDefaultX(x, W_num, timesteps):
+    x = np.hstack((1,x))
+    for j in range(timesteps):
+        x = np.dot(W_num.T, x)
+    return x
+
+def getInterventionX(x, W_num, timesteps, i):
+    x = np.hstack((1,x))
+    for j in range(timesteps):
+        x[i] *= change
+        x = np.dot(W_num.T, x)
+    return x
+
+def getSensitivity(getW_num, X_data, W1_data, w2_num, w3_num):
+    sensitivity, X_default  = [], []
+
+    for x, w1 in zip(X_data, W1_data):
+        W_num = getW_num(*x.T, *w1.T, *w2_num, *w3_num)
+        X_default.append(getDefaultX(x, W_num, timesteps))
+    X_default = np.array(X_default)
 
     # Sleep, income, exercise, discr to weight
-    for i in [3, 5, 6, 7]:
-        X_test = np.copy(X_data)
-        X_test.T[i] *= change
-        X_new = np.array([getNewX(*x.T, *w1.T, *w2_num, *w3_num).flatten()[1:] for x, w1 in zip(X_test, W1_data)])
-        sensitivity.append(np.mean(X_new.T[2] - X_check.T[2]))
+    for i in [sleep, income, exercise, discrimination]:
+        X_intervention = []
+        for x, w1 in zip(X_data, W1_data):
+            W_num = getW_num(*x.T, *w1.T, *w2_num, *w3_num)
+            X_intervention.append(getInterventionX(x, W_num, timesteps, i))
+        X_intervention = np.array(X_intervention)
+
+        sensitivity.append(np.mean(
+                X_intervention.T[weight] - X_default.T[weight]
+                ))
 
     return np.array(sensitivity)
 

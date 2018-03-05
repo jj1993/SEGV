@@ -76,7 +76,7 @@ def Stocks(X_data, W1_data, w2_num, getL_n, w3_init):
                 minimizer_kwargs = minimizer_kwargs,
                 niter = 100,
                 stepsize = .1,
-                T = 1e-3,
+                T = 1e-2,
                 # disp = True,
                 # accept_test = is_attractor
             )

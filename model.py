@@ -6,7 +6,7 @@ import numpy as np
 # from sympy.matrices.dense import hessian as Hessian
 
 def getWeightMatrix(W_expert, W_fixed, w1_sym, x_sym, shuffle):
-    W = W_expert
+    W = np.array(W_expert)
     if shuffle:
         # Creating a valid shuffled graph
         weights = W.T.flatten()[18:]
@@ -49,9 +49,9 @@ def getWeightMatrix(W_expert, W_fixed, w1_sym, x_sym, shuffle):
     s_t1 = sp.Matrix(x_t1[2:4])
     s_t2 = sp.Matrix(x_t2[2:4])
 
-    # Derivative given by first order foreward finite difference equation
+    # Derivative given by first order forward finite difference equation
     # with second order accuracy
-    ds_dt = 1/2*(-3*s + 4*s_t1 - s_t2)
+    ds_dt = s_t1 - s #1/2*(-3*s + 4*s_t1 - s_t2)
 
     ### ======================
     ### Making error term, gradient and Hessian
@@ -67,7 +67,8 @@ def getWeightMatrix(W_expert, W_fixed, w1_sym, x_sym, shuffle):
     # Making numerically efficient functions
     print("Lambdifying equation... [4/7]")
     getL_n = sp.lambdify(symbs, -sp.log(p1), "numpy")
-    # getNewX = sp.lambdify(symbs, x_t3, "numpy")
     getW_num = sp.lambdify(symbs, W)
+    food_intake = W[:,5].dot(x_sym)
+    getFood_num = sp.lambdify(symbs, food_intake)
 
-    return W, w1_sym, w2_sym, w3_sym, getL_n, getW_num
+    return W, w1_sym, w2_sym, w3_sym, getL_n, getW_num, getFood_num

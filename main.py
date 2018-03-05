@@ -5,9 +5,13 @@ import sympy as sp
 import matplotlib.pyplot as plt
 # Import own code
 import database, model, fit, validation, similarities
+from sklearn.model_selection import KFold
+import itertools
 
-shuffle = True
-nrRuns = 25
+shuffle_weights = False
+nrRuns = 1
+nrFolds = 3
+z = 0
 ethnicities_list = ["NL", "MAROK", "HIND"]
 
 print("Defining symbolic framework... [1/7]")
@@ -59,43 +63,61 @@ W_fixed = np.array([
     [ 0,      0,      0,             0,      0,      0,       0,      0,     0]
 ])
 
-
 if __name__ == '__main__':
-    sensitivities, points, similarity_list = [], [], []
+    points_list = np.empty((nrRuns, nrFolds**len(ethnicities_list)))
+    similarity_list = np.empty((nrRuns, 1))
+    model_list = np.empty((nrRuns, len(x_sym)**2))
+    kf = KFold(n_splits=nrFolds, shuffle=False)
+
     for n in range(nrRuns):
         print("\n=======================================")
         print("Moving on to the %dth model simulation"%(n+1))
         print("=======================================")
         #Defining weight types
-        W_sym, w1_sym, w2_sym, w3_sym, getL_n, getW_num = model.getWeightMatrix(
-            W_expert, W_fixed, w1_sym, x_sym, shuffle
-            )
+        W_sym, w1_sym, w2_sym, w3_sym, getL_n, getW_num, getFood_num \
+            = model.getWeightMatrix(
+                W_expert, W_fixed, w1_sym, x_sym, shuffle_weights
+                )
 
-        sensitivity_list = []
-        for n, eth in enumerate(ethnicities_list):
+        sensitivity_list = [[], [], []]
+        datas = []
+        for m, eth in enumerate(ethnicities_list):
             print("\nNow computing minimum for",eth)
             print("----------------------------")
-            print("Fitting auxiliary weights... [5/7]")
             (X_data, W1_data) = database.selectOnEthnicity(eth)
-            w2_num = fit.Auxiliaries(X_data, W_sym)
 
-            print("Fitting stock weights... [6/7]")
-            w3_init = [0 for w in w3_sym]
-            w3_num = fit.Stocks(X_data, W1_data, w2_num, getL_n, w3_init)
+            for train, val in kf.split(X_data):
+                X_train, W1_train = X_data[train], W1_data[train]
+                X_val, W1_val = X_data[val], W1_data[val]
 
-            print("Doing analysis... [7/7]")
-            sensitivity_list.append(validation.getSensitivity(
-                                    getW_num, X_data, W1_data, w2_num, w3_num
-                                    )
+                print("Fitting auxiliary weights... [5/7]")
+                w2_num = fit.Auxiliaries(X_train, W_sym)
+                print("Fitting stock weights... [6/7]")
+                w3_init = [0 for w in w3_sym]
+                w3_num = fit.Stocks(X_train, W1_train, w2_num, getL_n, w3_init)
+                # w3_num = w3_init
+                print("Doing analysis... [7/7]")
+                sensitivity_list[m].append(validation.getSensitivity(
+                    getW_num, X_val, W1_val, w2_num, w3_num
+                    )
                 )
-        similarity_list.append(
-            similarities.getSimilarity(W_expert, W_sym, W_fixed)
-            )
-        points.append(validation.getPoints(sensitivity_list))
 
-    np.savetxt('results/points4.txt', points)
-    np.savetxt('results/similarities4.txt', similarity_list)
-    plt.scatter(points, similarity_list)
-    plt.xlabel("Validation points")
-    plt.ylabel("Similarity to expert model")
-    plt.show()
+        points_list[n] = np.array([
+            validation.getPoints(d) for d in
+            itertools.product(*sensitivity_list)
+        ])
+
+        similarity_list[n] = \
+            similarities.getSimilarity(W_expert, W_sym, W_fixed)
+
+        W = np.array(W_sym).flatten()
+        W[W!=0]=1
+        model_list[n] = np.array(W, dtype=int)
+
+    np.savetxt('results/models%d.txt'%z, model_list)
+    np.savetxt('results/points%d.txt'%z, points_list)
+    np.savetxt('results/similarities%d.txt'%z, similarity_list)
+    # plt.scatter(points, similarity_list)
+    # plt.xlabel("Validation points")
+    # plt.ylabel("Similarity to expert model")
+    # plt.show()

@@ -4,12 +4,17 @@ from scipy.odr import *
 
 THERMOGENESYS = 1/7700 # kilos weight gain per calorie, (Katan & Ludwig, 2010)
 
+# HELIUS study
 df1 = pd.read_csv('data/data.csv', decimal=',', delimiter=';').set_index('Heliusnr')
+# Additional study on energy intake in calories done by Mary Nicolaou
+# for participants of the HELIUS study
 df2 = pd.read_csv(
         'data/energy_intake.csv', decimal=',', delimiter=';'
         ).set_index('Heliusnr')
+# Additional study on calories burnt per SQUASH minute exercise
+# for participants of the HELIUS study (Nicolaou et al., 2016)
 df3 = pd.read_csv(
-        'data/squash_data.csv', decimal=',', delimiter=';'
+        'data/squash_data.csv', delimiter=','
         ).set_index('Heliusnr')
 df = df1.join(df2)
 
@@ -17,13 +22,10 @@ df = df1.join(df2)
 ### Defining functions
 ### ==================
 
-def reformat(l, reverse=False):
+def reformat(l):
     """
-    Identifies missing data and reverses high and low data values when 'reverse'
+    Identifies missing data
     """
-    if reverse:
-        m = max(l)
-        return np.array([m-i if i != -1 else np.nan for i in l])
     return np.array([i if i != -1 else np.nan for i in l])
 
 def toFloat(l):
@@ -34,6 +36,33 @@ def toFloat(l):
     new = l.str.replace(',', '.')
     new = pd.to_numeric(new, errors='coerce')
     return new
+
+def r(l, select):
+    """
+    Selects data points according to select array
+    """
+    return np.array([i for n, i in enumerate(l) if not select[n]])
+
+def f(p, q):
+    """
+    Fitting function for linear BMI regression
+    """
+    dummy_q = np.vstack(([1 for n in range(len(q))],q))
+    return np.dot(dummy_q.T, p)
+
+def fitBMI(x0, x1):
+    """
+    Linear BMI regression on body-image pictures
+    """
+    input_data = x0
+    output_data = x1
+
+    # Set up ODR with the model and data.
+    data = RealData(input_data, output_data)
+    odr = ODR(data, Model(f), beta0=[0, 0])
+
+    # Run the regression.
+    return odr.run().beta
 
 ### ==============
 ### Defining data
@@ -86,16 +115,10 @@ pd_variables = [
     stress, weight, sleep, energy_intake, income,
     bmi, exercise, discrimination
     ]
-should_reverse = [0, 0, 0, 0, 0, 0, 0, 0]
-variables = np.array([
-    reformat(d, r) for d, r in zip(pd_variables, should_reverse)
-    ])
+variables = np.array([reformat(d) for d in pd_variables])
 
 pd_weight_values = [sex, age, length, inv_length, bmi_picture, ideal_body_image]
-should_reverse = [0, 0, 0, 0, 0, 0]
-weight_values = np.array([
-    reformat(a, r) for a, r in zip(pd_weight_values, should_reverse)
-    ])
+weight_values = np.array([reformat(a) for a in pd_weight_values])
 
 ### ======================
 ### Removing incomplete data entries
@@ -112,114 +135,101 @@ for n, d in enumerate(data):
     select += h
 select[select>1] = 1
 
-def r(l, select):
-    return np.array([i for n, i in enumerate(l) if not select[n]])
+ethn_data = r(ethnicities, select)
 
-def cleanSelection(data, select):
-    ethn_data = r(ethnicities, select)
+stress = r(data[0], select)
+weight = r(data[1], select)
+sleep = r(data[2], select)
+energy_intake = r(data[3], select)
+income = r(data[4], select)
+bmi = r(data[5], select)
+exercise = r(data[6], select)
+discrimination = r(data[7], select)
 
-    stress = r(data[0], select)
-    weight = r(data[1], select)
-    sleep = r(data[2], select)
-    energy_intake = r(data[3], select)
-    income = r(data[4], select)
-    bmi = r(data[5], select)
-    exercise = r(data[6], select)
-    discrimination = r(data[7], select)
+sex = r(data[8], select)
+age = r(data[9], select)
+length = r(data[10], select)
+inv_length = r(data[11], select)
+bmi_picture = r(data[12], select)
+ideal_body_image = r(data[13], select)
 
-    sex = r(data[8], select)
-    age = r(data[9], select)
-    length = r(data[10], select)
-    inv_length = r(data[11], select)
-    bmi_picture = r(data[12], select)
-    ideal_body_image = r(data[13], select)
+### ======================
+### FITTING PERCEIVED FATNESS ON BMI UNITS
+###
+### 1) Fitting BMI's to self-reported antropometry picture
+### 2) Using fit to determine ideal BMI
+### 3) Perceived fatness is defined as the difference between 1) and 2)
+### (Clearification: The numbers from 'bmi_picture' and 'ideal_body_image'
+### are self-reported numbers selected on images from the HELIUS study)
+### ======================
 
-    ### ======================
-    ### Fitting BMI's to self-reported antropometry picture
-    ### Using fit to determine ideal BMI
-    ### ======================
+p = fitBMI(bmi_picture, bmi) # 1)
+ideal_body_image = f(p, ideal_body_image) # 2)
+perceived_fatness = bmi - ideal_body_image # 3)
 
-    def f(p, q):
-        dummy_q = np.vstack(([1 for n in range(len(q))],q))
-        return np.dot(dummy_q.T, p)
+### ======================
+### Determining squash-energy-expenditure
+### Additional study on calories burnt per SQUASH minute exercise
+### for participants of the HELIUS study (Nicolaou et al., 2016)
+### ======================
 
-    def fitBMI(x0, x1):
-        input_data = x0
-        output_data = x1
+squash_p = df3['H1_Squash_totmwk']
+AEE_p = df3['AEE_mean']
+squash, AEE = [], []
+for s, a in zip(squash_p, AEE_p):
+    if s != ' ' and s != '0' and \
+       a != ' ' and a != '0':
+        squash.append(float(s))
+        AEE.append(float(a.replace(',','.')))
 
-        # Set up ODR with the model and data.
-        data = RealData(input_data, output_data)
-        odr = ODR(data, Model(f), beta0=[0, 0])
+cal_min = np.mean(np.array(AEE)/np.array(squash))
+AEE = [cal_min for i in range(len(select[select==0]))]
 
-        # Run the regression.
-        return odr.run().beta
+### ======================
+### Predicting energy expenditure and returning data
+### ======================
 
-    p = fitBMI(bmi_picture, bmi)
-    ideal_body_image = f(p, ideal_body_image)
-    perceived_fatness = bmi - ideal_body_image
+# Energy expenditure in rest from Schofield equations
+# "Human energy requirements" - Report of a Joint FAO/WHO/UNU Expert
+# Consultation, Rome, 17–24 October 2001
+male, female = 1, 2
+constant_rest_energy, variable_rest_energy = [], []
+for s, a in zip(sex, age):
+    if s == male:
+        if a <= 30:
+            variable_rest_energy.append(15.057)
+            constant_rest_energy.append(692.2)
+        elif a <= 60:
+            variable_rest_energy.append(11.472)
+            constant_rest_energy.append(873.1)
+        else:
+            variable_rest_energy.append(11.711)
+            constant_rest_energy.append(587.7)
 
-    ### ======================
-    ### Determining squash-energy-expenditure
-    ### ======================
+    if s == female:
+        if a <= 30:
+            variable_rest_energy.append(14.818)
+            constant_rest_energy.append(486.6)
+        elif a <= 60:
+            variable_rest_energy.append(8.126)
+            constant_rest_energy.append(845.6)
+        else:
+            variable_rest_energy.append(9.082)
+            constant_rest_energy.append(658.5)
 
-    squash_p = df3['H1_Squash_totmwk']
-    AEE_p = df3['AEE_mean']
-    squash, AEE = [], []
-    for s, a in zip(squash_p, AEE_p):
-        if s != ' ' and s != '0':
-            squash.append(float(s))
-            AEE.append(a)
-
-    cal_min = np.mean(np.array(AEE)/np.array(squash))
-
-    ### ======================
-    ### Predicting energy expenditure and returning data
-    ### ======================
-
-    variables_data = np.array([
-            perceived_fatness, stress, weight, sleep, energy_intake, income,
-            exercise, discrimination
-            ])
-
-    # Energy expenditure in rest from Schofield equations
-    # "Human energy requirements" - Report of a Joint FAO/WHO/UNU Expert
-    # Consultation, Rome, 17–24 October 2001
-    male, female = 1, 2
-    constant_rest_energy, variable_rest_energy = [], []
-    for s, a in zip(sex, age):
-        if s == male:
-            if a <= 30:
-                variable_rest_energy.append(15.057)
-                constant_rest_energy.append(692.2)
-            elif a <= 60:
-                variable_rest_energy.append(11.472)
-                constant_rest_energy.append(873.1)
-            else:
-                variable_rest_energy.append(11.711)
-                constant_rest_energy.append(587.7)
-
-        if s == female:
-            if a <= 30:
-                variable_rest_energy.append(14.818)
-                constant_rest_energy.append(486.6)
-            elif a <= 60:
-                variable_rest_energy.append(8.126)
-                constant_rest_energy.append(845.6)
-            else:
-                variable_rest_energy.append(9.082)
-                constant_rest_energy.append(658.5)
-
-    AEE = [cal_min for i in range(len(select[select==0]))]
-    thermogenesys = np.array([THERMOGENESYS for i in range(len(select[select==0]))])
-    weights_data = np.array([
-        constant_rest_energy, ideal_body_image, variable_rest_energy,
-        inv_length, AEE, thermogenesys
+# Defining cleaned data
+variables_data = np.array([
+        perceived_fatness, stress, weight, sleep, energy_intake, income,
+        exercise, discrimination
         ])
 
-    return ethn_data, variables_data, weights_data
+thermogenesys = np.array([THERMOGENESYS for i in range(len(select[select==0]))])
+weights_data = np.array([
+    ideal_body_image, constant_rest_energy, inv_length, variable_rest_energy,
+    AEE, thermogenesys
+    ])
 
-ethn_data, variables_data, weights_data = cleanSelection(data, select)
-
+# Defining functions to request data from this module
 def selectOnEthnicity(eth):
     """
     Selects all data for one of three ethnic groups

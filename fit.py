@@ -1,45 +1,31 @@
 # Import dependencies
 import numpy as np
 from scipy.odr import *
-from scipy.optimize import basinhopping
+from sklearn import linear_model
+import matplotlib.pyplot as plt
 
 ### ======================
 ### Fitting auxiliary weights
 ### ======================
 
-def f(p, q):
-    """
-    Multiplies all data points q (matrix) by the weights p (vector),
-    where p[0] is multiplied by 1 (a constant added to the linear equation).
-
-    Returns vector of multiplied values.
-    """
-    if q.ndim == 1:
-        # Debug for case where f = p[0] + p[1]*q
-        # Scipy tries to change q from shape (1,N) to (N,)
-        q = q.reshape((1,len(q)))
-    dummy_q = np.vstack(([1 for n in range(len(q[0]))],q))
-    return np.dot(dummy_q.T, p)
-
-def linearFit(input_data, output_data):
+def linearFit(X, y):
     """
     Takes a matrix of input data and a vector of output data.
     Tries to map the input data linearly to the output data by
-    orthogonal distance regression.
+    linear regression.
 
     Returns vector of weights.
     """
     # If there is no input data, there is only one weight: a constant that
     # is the mean of the output (target) data
-    if len(input_data) == 0: return [np.mean(output_data)]
-    # Since we cannot estimate the starting weights for the naive models,
-    # all initial weights b are set to 0
-    b = [0 for n in range(len(input_data) + 1)]
-    real_data = Data(input_data, output_data)
-    odr = ODR(real_data, Model(f), beta0=b)
+    if len(X) == 0:
+        return [np.mean(y)]
+
+    lr = linear_model.LinearRegression()
+    lr.fit(X.T, y)
 
     # Run the regression.
-    return odr.run().beta
+    return np.hstack([lr.intercept_, lr.coef_])
 
 def Auxiliaries(X_data, W_sym):
     """
@@ -57,27 +43,53 @@ def Auxiliaries(X_data, W_sym):
 
     return np.array(w2_num)
 
-def log_likelihood(w3_num, X_data, W1_data, w2_num, getL_n):
-    L = getL_n(*X_data.T, *W1_data.T, *w2_num, *w3_num)
-    return np.mean(L)
+def stockFit(input_data, output_data, getChange, w_sym):
+    """
+    Takes a matrix of input data and a vector of output data.
+    Tries to map the input data linearly to the output data by
+    linear regression.
 
-# def is_attractor(f_new, x_new, f_old, x_old):
-#     L = num_attract(*X_data.T, *W1_data.T, *W2_num, *x_new)
-#
-#     return np.all([np.mean(l) > 0 for l in L])
+    Returns vector of weights.
+    """
+    # Since we cannot estimate the starting weights for the naive models,
+    # all initial weights b are set to 0
+    b = [0 for n in w_sym]
+    real_data = Data(input_data, output_data)
 
-def Stocks(X_data, W1_data, w2_num, getL_n, w3_init):
-    minimizer_kwargs = {
-        "args": (X_data, W1_data, w2_num, getL_n),
-        # "method": "Powell"
-    }
-    res = basinhopping(
-                log_likelihood, w3_init,
-                minimizer_kwargs = minimizer_kwargs,
-                niter = 100,
-                stepsize = .1,
-                T = 1e-2,
-                # disp = True,
-                # accept_test = is_attractor
-            )
-    return res.x
+    def f(p, q):
+        return getChange(*p, *q)
+
+    odr = ODR(real_data, Model(f), beta0=b)
+
+    # Run the regression.
+    return odr.run().beta
+
+def Stress(X_data, W1_data, w3_sym, getNewStress, alpha):
+    """
+    Does a linear regression equating the current stress value to the stress
+    value one timestep later. Effectively minimizing the first order taylor
+    approximation
+
+    Returns the weights leading to stress
+    """
+    last_w3 = np.array([alpha for x in X_data])
+
+    input_data = np.vstack((last_w3.T, X_data.T, W1_data.T))
+    output_data = X_data.T[1]
+    w3_num = stockFit(input_data, output_data, getNewStress, w3_sym[:-1])
+
+    return np.hstack((w3_num, alpha))
+
+def Weight(X_data, W1_data, w4_sym, getNewWeight):
+    """
+    Does a linear regression equating the current stress value to the stress 
+    value one timestep later. Effectively minimizing the first order taylor
+    approximation
+
+    Returns the weights leading to weight
+    """
+    input_data = np.hstack((X_data, W1_data)).T
+    output_data = X_data.T[2]
+    w4_num = stockFit(input_data, output_data, getNewWeight, w4_sym)
+
+    return np.array(w4_num)

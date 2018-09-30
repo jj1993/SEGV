@@ -27,13 +27,13 @@ def getWeightMatrix(W_expert, W_fixed, w1_sym, x_sym, shuffle):
             G = nx.Graph(np.array(A).reshape((9,9)))
 
     # Determining weight types
-    w3_sym = [w for w in W[:,2:4].flatten() if type(w) != int]
+    w3_sym = [w for w in W[:,2].flatten() if type(w) != int]
+    w4_sym = [w for w in W[:,3].flatten() if type(w) != int]
 
     W += W_fixed
     w2_sym = []
     for c in W[:,4:].T:
         w2_sym += [w for w in c if type(w) != int]
-    symbs = x_sym[1:] + w1_sym + w2_sym + w3_sym
     W = sp.Matrix(W)
 
     ### ======================
@@ -43,32 +43,18 @@ def getWeightMatrix(W_expert, W_fixed, w1_sym, x_sym, shuffle):
     print("Defining finite difference approximation... [2/7]")
 
     x_t1 = W.T*x_sym
-    x_t2 = W.T*W.T*x_sym
-    x_t3 = W.T*W.T*W.T*x_sym
-    s = sp.Matrix(x_sym[2:4])
-    s_t1 = sp.Matrix(x_t1[2:4])
-    s_t2 = sp.Matrix(x_t2[2:4])
-
     # Derivative given by first order forward finite difference equation
-    # with second order accuracy
-    ds_dt = s_t1 - s #1/2*(-3*s + 4*s_t1 - s_t2)
-
-    ### ======================
-    ### Making error term, gradient and Hessian
-    ### ======================
-
-    print("Defining error term... [3/7]")
-
-    vec = ds_dt
-    p1 = 1/(1+vec.dot(vec))
-    # grad_n = sp.Matrix(Derive(E_n, W3))
-    # hess_n = Hessian(E_n, W3)
+    # with first order accuracy
 
     # Making numerically efficient functions
     print("Lambdifying equation... [4/7]")
-    getL_n = sp.lambdify(symbs, -sp.log(p1), "numpy")
-    getW_num = sp.lambdify(symbs, W)
-    food_intake = W[:,5].dot(x_sym)
-    getFood_num = sp.lambdify(symbs, food_intake)
+    symbs = w3_sym + x_sym[1:] + w1_sym
+    getNewStress = sp.lambdify(symbs, x_t1[2], "numpy")
+    symbs = w4_sym + x_sym[1:] + w1_sym
+    getNewWeight = sp.lambdify(symbs, x_t1[3], "numpy")
 
-    return W, w1_sym, w2_sym, w3_sym, getL_n, getW_num, getFood_num
+    symbs = x_sym[1:] + w1_sym + w2_sym + w3_sym + w4_sym
+    getW_num = sp.lambdify(symbs, W)
+
+    return (W, w1_sym, w2_sym, w3_sym, w4_sym, getNewStress, getNewWeight,
+            getW_num)
